@@ -74,6 +74,9 @@
 - func: bilinear(Tensor input1, Tensor input2, Tensor weight, Tensor? bias) -> Tensor
   variants: function
 
+- func: bilinear_backward(Tensor grad_out, Tensor input1, Tensor input2, Tensor weight, Tensor? bias, std::array<bool,4> grad_mask) -> (Tensor, Tensor, Tensor, Tensor)
+  variants: function
+
 - func: cat(TensorList tensors, int64_t dim=0) -> Tensor
   variants: function
 
