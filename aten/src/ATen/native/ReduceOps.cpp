@@ -120,5 +120,74 @@ Tensor prod(const Tensor &self, int64_t dim_, bool keepdim) {
 }
 
 // \DIM REDUCE ################################################################
+
+// MULTI DIM REDUCE ###########################################################
+
+Tensor sum(const Tensor &self, IntList dims_, bool keepdim) {
+  if (dims_.size() == 1) {
+    return sum(self, dims_[0], keepdim);
+  }
+  if (dims_.size() == 0) {
+    return self;
+  }
+  size_t ndims = self.dim();
+  std::vector<bool> seen(ndims, false);
+  Tensor result = self;
+  for (size_t i = 0; i < dims_.size(); i++) {
+    auto dim = maybe_wrap_dim(dims_[i], ndims);
+    if (seen[dim])
+      AT_ERROR("repeated dim in sum");
+    seen[dim] = true;
+    result = at::sum(result, dim, true);
+  }
+  if (! keepdim) {
+    size_t curdim = 0;
+    for (size_t i = 0; i < ndims; i++) {
+      if (seen[i]) {
+	result.squeeze_(curdim);
+      } else {
+	curdim++;
+      }
+    }
+  }
+  return result;
+}
+
+Tensor& sum_out(Tensor &result, const Tensor &self, IntList dims_, bool keepdim) {
+  if (dims_.size() == 1) {
+    if (self.is_cuda()) {
+      return _sum_out_cuda(result, self, dims_[0], keepdim);
+    }
+    else {
+      return _sum_out_cpu(result, self, dims_[0], keepdim);
+    }
+  }
+  size_t ndims = self.dim();
+  std::vector<bool> seen(ndims, false);
+  Tensor t = self;
+  for (size_t i = 0; i < dims_.size(); i++) {
+    auto dim = maybe_wrap_dim(dims_[i], ndims);
+    if (seen[dim])
+      AT_ERROR("repeated dim in sum");
+    seen[dim] = true;
+    if (i + 1 == dims_.size()) {
+      at::sum_out(result, t, dim, true);
+    } else {
+      t = at::sum(t, dim, true);
+    }
+  }
+  if (! keepdim) {
+    size_t curdim = 0;
+    for (size_t i = 0; i < ndims; i++) {
+      if (seen[i]) {
+	result.squeeze_(curdim);
+      } else {
+	curdim++;
+      }
+    }
+  }
+  return result;
+}
+
 }
 }

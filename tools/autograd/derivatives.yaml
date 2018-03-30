@@ -604,8 +604,8 @@
 - name: sum(Tensor self)
   self: grad.expand(self.sizes())
 
-- name: sum(Tensor self, int64_t dim, bool keepdim)
-  self: sum_backward(grad, self.sizes(), dim, keepdim)
+- name: sum(Tensor self, IntList dims, bool keepdim)
+  self: sum_backward(grad, self.sizes(), dims, keepdim)
 
 - name: svd(Tensor self, bool some)
   self: svd_backward(grads, self, some, res1, res2, res3)  # resX are defined in Declarations.cwrap

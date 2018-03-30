@@ -27,6 +27,17 @@ static inline int64_t maybe_wrap_dim(int64_t dim, int64_t dim_post_expr, bool wr
   return dim;
 }
 
+static inline std::vector<bool> dim_list_to_vector(IntList dims, int64_t ndims, bool wrap_scalar=true) {
+  std::vector<bool> seen(ndims, false);
+  for (size_t i = 0; i < dims.size(); i++) {
+    auto dim = maybe_wrap_dim(dims[i], ndims);
+    if (seen[dim])
+      AT_ERROR("repeated dim");
+    seen[dim] = true;
+  }
+  return seen;
+}
+
 static inline int64_t maybe_wrap_dim(int64_t dim, TensorImpl *tensor) {
   return maybe_wrap_dim(dim, tensor->dim());
 }

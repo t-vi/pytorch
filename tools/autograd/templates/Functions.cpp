@@ -129,9 +129,19 @@ Tensor permute_backwards(const Tensor & grad, IntList fwd_dims) {
   return grad.permute(dims);
 }
 
-Tensor sum_backward(const Tensor & grad, IntList sizes, int64_t dim, bool keepdim) {
+Tensor sum_backward(const Tensor & grad, IntList sizes, IntList dims, bool keepdim) {
   if (!keepdim && sizes.size() > 0) {
-    return grad.unsqueeze(dim).expand(sizes);
+    if (dims.size()==1) {
+      return grad.unsqueeze(dims[0]).expand(sizes);
+    } else {
+      std::vector<bool> dims_to_unsqueeze = dim_list_to_vector(dims, sizes.size());
+      Tensor res = grad;
+      for (size_t i = 0; i < sizes.size(); i++){
+	if (dims_to_unsqueeze[i])
+	  res = res.unsqueeze(i);
+      }
+      return res.expand(sizes);
+    }
   } else {
     return grad.expand(sizes);
   }
