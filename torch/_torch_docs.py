@@ -4912,8 +4912,8 @@ Example::
      2.2440
     [torch.FloatTensor of size (4,)]
 
-    >>> b = torch.arange(4*5*6).view(4,5,6)
-    >>> torch.sum(b, (2,1))
+    >>> b = torch.arange(4*5*6).view(4, 5, 6)
+    >>> torch.sum(b, (2, 1))
       435
      1335
      2235
