@@ -619,9 +619,9 @@
     CPU: _sum_cpu
     CUDA: _sum_cuda
 
-- func: sum(Tensor self, IntList[1] dims, bool keepdim=False) -> Tensor
+- func: sum(Tensor self, IntList[1] dim, bool keepdim=False) -> Tensor
 
-- func: sum_out(Tensor result, Tensor self, IntList[1] dims, bool keepdim=False) -> Tensor
+- func: sum_out(Tensor result, Tensor self, IntList[1] dim, bool keepdim=False) -> Tensor
   variants: function
 
 - func: sqrt(Tensor self) -> Tensor

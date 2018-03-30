@@ -1321,12 +1321,19 @@ class TestTorch(TestCase):
         check_sum_dim(torch.randn(50, 50, 50), 0)
         check_sum_dim(torch.randn(50, 50, 50), 1)
         check_sum_dim(torch.randn(50, 50, 50), 2)
+        check_sum_dim(torch.randn(50, 50, 50), (1,2))
+        check_sum_dim(torch.randn(50, 50, 50), (1,-1))
 
     def test_sum_out(self):
         x = torch.rand(100, 100)
         res1 = torch.sum(x, 1)
         res2 = torch.Tensor()
         torch.sum(x, 1, out=res2)
+        self.assertEqual(res1, res2)
+        x = torch.rand(100, 100, 100)
+        res1 = torch.sum(x, (2,1))
+        res2 = torch.Tensor()
+        torch.sum(x, (2,1), out=res2)
         self.assertEqual(res1, res2)
 
     # TODO: these tests only check if it's possible to pass a return value
