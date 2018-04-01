@@ -137,7 +137,7 @@ inline Tensor reduce_multi(const Tensor &self, IntList dims_, bool keepdim) {
   std::bitset<64> seen;
   Tensor result = self;
   for (size_t i = 0; i < dims_.size(); i++) {
-    auto dim = maybe_wrap_dim(dims_[i], ndims);
+    size_t dim = maybe_wrap_dim(dims_[i], ndims);
     if (seen[dim])
       AT_ERROR("repeated dim");
     seen[dim] = true;

@@ -32,7 +32,7 @@ static inline std::bitset<64> dim_list_to_vector(IntList dims, int64_t ndims, bo
   AT_ASSERT(ndims <= 64, "tensor dimension must be <= 64 for multiple dims")
   std::bitset<64> seen;
   for (size_t i = 0; i < dims.size(); i++) {
-    auto dim = maybe_wrap_dim(dims[i], ndims);
+    size_t dim = maybe_wrap_dim(dims[i], ndims);
     if (seen[dim])
       AT_ERROR("repeated dim");
     seen[dim] = true;
