@@ -9,6 +9,7 @@
 #include <functional>
 #include <numeric>
 #include <vector>
+#include <bitset>
 
 #include <map>
 
@@ -123,22 +124,24 @@ Tensor prod(const Tensor &self, int64_t dim_, bool keepdim) {
 
 // MULTI DIM REDUCE ###########################################################
 
-Tensor sum(const Tensor &self, IntList dims_, bool keepdim) {
+template <Tensor (reduce_1)(const Tensor &, int64_t, bool)>
+inline Tensor reduce_multi(const Tensor &self, IntList dims_, bool keepdim) {
   if (dims_.size() == 1) {
-    return sum(self, dims_[0], keepdim);
+    return reduce_1(self, dims_[0], keepdim);
   }
   if (dims_.size() == 0) {
     return self;
   }
   size_t ndims = self.dim();
-  std::vector<bool> seen(ndims, false);
+  AT_ASSERT(ndims <= 64, "tensor dimension must be <= 64 for multiple dims")
+  std::bitset<64> seen;
   Tensor result = self;
   for (size_t i = 0; i < dims_.size(); i++) {
     auto dim = maybe_wrap_dim(dims_[i], ndims);
     if (seen[dim])
-      AT_ERROR("repeated dim in sum");
+      AT_ERROR("repeated dim");
     seen[dim] = true;
-    result = at::sum(result, dim, true);
+    result = reduce_1(result, dim, true);
   }
   if (! keepdim) {
     size_t curdim = 0;
@@ -153,17 +156,15 @@ Tensor sum(const Tensor &self, IntList dims_, bool keepdim) {
   return result;
 }
 
-Tensor& sum_out(Tensor &result, const Tensor &self, IntList dims_, bool keepdim) {
+template <Tensor (reduce_1)(const Tensor &, int64_t, bool),
+	  Tensor& (reduce_1_out)(Tensor& result, const Tensor &, int64_t, bool)>
+inline Tensor& reduce_multi_out(Tensor &result, const Tensor &self, IntList dims_, bool keepdim) {
   if (dims_.size() == 1) {
-    if (self.is_cuda()) {
-      return _sum_out_cuda(result, self, dims_[0], keepdim);
-    }
-    else {
-      return _sum_out_cpu(result, self, dims_[0], keepdim);
-    }
+    return reduce_1_out(result, self, dims_[0], keepdim);
   }
   size_t ndims = self.dim();
-  std::vector<bool> seen(ndims, false);
+  AT_ASSERT(ndims <= 64, "tensor dimension must be <= 64 for multiple dims")
+  std::bitset<64> seen;
   Tensor t = self;
   for (size_t i = 0; i < dims_.size(); i++) {
     auto dim = maybe_wrap_dim(dims_[i], ndims);
@@ -171,9 +172,9 @@ Tensor& sum_out(Tensor &result, const Tensor &self, IntList dims_, bool keepdim)
       AT_ERROR("repeated dim in sum");
     seen[dim] = true;
     if (i + 1 == dims_.size()) {
-      at::sum_out(result, t, dim, true);
+      reduce_1_out(result, t, dim, true);
     } else {
-      t = at::sum(t, dim, true);
+      t = reduce_1(t, dim, true);
     }
   }
   if (! keepdim) {
@@ -189,5 +190,23 @@ Tensor& sum_out(Tensor &result, const Tensor &self, IntList dims_, bool keepdim)
   return result;
 }
 
+
+Tensor& sum_out(Tensor &result, const Tensor &self, int64_t dim, bool keepdim) {
+  if (self.is_cuda()) {
+    return _sum_out_cuda(result, self, dim, keepdim);
+  }
+  else {
+    return _sum_out_cpu(result, self, dim, keepdim);
+  }
 }
+
+Tensor sum(const Tensor &self, IntList dims, bool keepdim) {
+  return reduce_multi<sum>(self, dims, keepdim);
 }
+
+Tensor& sum_out(Tensor &result, const Tensor &self, IntList dims, bool keepdim)
+{
+  return reduce_multi_out<sum, sum_out>(result, self, dims, keepdim);
+}
+
+}} // namespace at::native

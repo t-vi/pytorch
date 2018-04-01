@@ -1,6 +1,7 @@
 #include "Functions.h"
 #include <ATen/WrapDimUtils.h>
 #include <iostream>
+#include <bitset>
 
 // define constants like M_PI and C keywords for MSVC
 #ifdef _MSC_VER
@@ -134,7 +135,7 @@ Tensor sum_backward(const Tensor & grad, IntList sizes, IntList dims, bool keepd
     if (dims.size()==1) {
       return grad.unsqueeze(dims[0]).expand(sizes);
     } else {
-      std::vector<bool> dims_to_unsqueeze = dim_list_to_vector(dims, sizes.size());
+      std::bitset<64> dims_to_unsqueeze = dim_list_to_vector(dims, sizes.size());
       Tensor res = grad;
       for (size_t i = 0; i < sizes.size(); i++){
 	if (dims_to_unsqueeze[i])
