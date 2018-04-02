@@ -1,5 +1,6 @@
 #include "Functions.h"
 #include <ATen/WrapDimUtils.h>
+#include <ATen/WrapDimUtilsMulti.h>
 #include <iostream>
 #include <bitset>
 

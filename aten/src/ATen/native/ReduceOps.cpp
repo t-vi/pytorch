@@ -3,6 +3,7 @@
 #include "ATen/ExpandUtils.h"
 #include "ATen/NativeFunctions.h"
 #include "ATen/WrapDimUtils.h"
+#include "ATen/WrapDimUtilsMulti.h"
 #include "cpu/ReduceOpsKernel.h"
 
 #include <algorithm>

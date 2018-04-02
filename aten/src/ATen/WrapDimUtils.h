@@ -2,7 +2,6 @@
 
 #include "ATen/TensorImpl.h"
 #include <sstream>
-#include <bitset>
 
 namespace at {
 
@@ -27,24 +26,6 @@ static inline int64_t maybe_wrap_dim(int64_t dim, int64_t dim_post_expr, bool wr
   if (dim < 0) dim += dim_post_expr;
   return dim;
 }
-
-// This is a hack to work around strange interaction of
-// bitset on Windows with operator overloading
-#if ! (defined(_MSC_VER) && defined(THC_HALF_AUTO_NUMERICS_INC))
-constexpr size_t dim_bitset_size = 64;
-
-static inline std::bitset<dim_bitset_size> dim_list_to_vector(IntList dims, int64_t ndims, bool wrap_scalar=true) {
-  AT_ASSERT(ndims <= (int64_t) dim_bitset_size, "tensor dimension must be <= %zu for multiple dims", dim_bitset_size);
-  std::bitset<dim_bitset_size> seen;
-  for (size_t i = 0; i < dims.size(); i++) {
-    size_t dim = maybe_wrap_dim(dims[i], ndims);
-    if (seen[dim])
-      AT_ERROR("repeated dim");
-    seen[dim] = true;
-  }
-  return seen;
-}
-#endif // ! (defined(THC_HALF_AUTO_NUMERICS_INC) && defined(_MSC_VER))
 
 static inline int64_t maybe_wrap_dim(int64_t dim, TensorImpl *tensor) {
   return maybe_wrap_dim(dim, tensor->dim());
