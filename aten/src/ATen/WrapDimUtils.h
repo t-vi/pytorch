@@ -30,7 +30,7 @@ static inline int64_t maybe_wrap_dim(int64_t dim, int64_t dim_post_expr, bool wr
 
 // This is a hack to work around strange interaction of
 // bitset on Windows with operator overloading
-#if ! (defined(_MSC_VER) || defined(THC_HALF_AUTO_NUMERICS_INC))
+#if ! (defined(_MSC_VER) && defined(THC_HALF_AUTO_NUMERICS_INC))
 constexpr size_t dim_bitset_size = 64;
 
 static inline std::bitset<dim_bitset_size> dim_list_to_vector(IntList dims, int64_t ndims, bool wrap_scalar=true) {
