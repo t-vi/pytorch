@@ -133,8 +133,8 @@ inline Tensor reduce_multi(const Tensor &self, IntList dims_, bool keepdim) {
     return self;
   }
   size_t ndims = self.dim();
-  AT_ASSERT(ndims <= 64, "tensor dimension must be <= 64 for multiple dims")
-  std::bitset<64> seen;
+  AT_ASSERT(ndims <= (int64_t) dim_bitset_size, "tensor dimension must be <= %zu for multiple dims", dim_bitset_size);
+  std::bitset<dim_bitset_size> seen;
   Tensor result = self;
   for (size_t i = 0; i < dims_.size(); i++) {
     size_t dim = maybe_wrap_dim(dims_[i], ndims);
@@ -163,8 +163,8 @@ inline Tensor& reduce_multi_out(Tensor &result, const Tensor &self, IntList dims
     return reduce_1_out(result, self, dims_[0], keepdim);
   }
   size_t ndims = self.dim();
-  AT_ASSERT(ndims <= 64, "tensor dimension must be <= 64 for multiple dims")
-  std::bitset<64> seen;
+  AT_ASSERT(ndims <= (int64_t) dim_bitset_size, "tensor dimension must be <= %zu for multiple dims", dim_bitset_size);
+  std::bitset<dim_bitset_size> seen;
   Tensor t = self;
   for (size_t i = 0; i < dims_.size(); i++) {
     auto dim = maybe_wrap_dim(dims_[i], ndims);
