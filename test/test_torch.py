@@ -1331,7 +1331,7 @@ class TestTorch(TestCase):
         torch.sum(x, 1, out=res2)
         self.assertEqual(res1, res2)
         x = torch.rand(100, 100, 100)
-        res1 = torch.sum(x, (2, 1))
+        res1 = x.sum(2).sum(1)
         res2 = torch.Tensor()
         torch.sum(x, (2, 1), out=res2)
         self.assertEqual(res1, res2)

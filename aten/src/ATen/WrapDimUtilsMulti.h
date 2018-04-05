@@ -17,7 +17,7 @@ static inline std::bitset<dim_bitset_size> dim_list_to_bitset(IntList dims, int6
   std::bitset<dim_bitset_size> seen;
   for (size_t i = 0; i < dims.size(); i++) {
     size_t dim = maybe_wrap_dim(dims[i], ndims);
-    AT_ASSERT(!seen[dim], "dim %zu appears multiple times in the list of reduced dims", dim);
+    AT_ASSERT(!seen[dim], "dim %zu appears multiple times in the list of dims", dim);
     seen[dim] = true;
   }
   return seen;
