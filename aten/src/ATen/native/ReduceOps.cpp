@@ -133,20 +133,15 @@ inline Tensor reduce_multi(const Tensor &self, IntList dims_, bool keepdim) {
     return self;
   }
   size_t ndims = self.dim();
-  auto seen = dim_list_to_bitset(dims_, ndims);
   Tensor result = self;
-  for (size_t i = 0; i < dims_.size(); i++) {
-    size_t dim = maybe_wrap_dim(dims_[i], ndims);
-    result = reduce_1(result, dim, true);
-  }
   if (! keepdim) {
-    size_t curdim = 0;
-    for (size_t i = 0; i < ndims; i++) {
-      if (seen[i]) {
-	result.squeeze_(curdim);
-      } else {
-	curdim++;
-      }
+    for (auto &dim : absolute_to_incremental_reductions(dims_, ndims))
+      result = reduce_1(result, dim, false);
+  } else {
+    dim_list_to_bitset(dims_, ndims); // check for duplicates
+    for (auto &dim_ : dims_) {
+      size_t dim = maybe_wrap_dim(dim_, ndims);
+      result = reduce_1(result, dim, true);
     }
   }
   return result;
