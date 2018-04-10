@@ -140,10 +140,7 @@ def set_default_tensor_type(t):
 
         >>> torch.set_default_tensor_type("torch.FloatTensor")
         >>> torch.Tensor([1.2, 3])
-
-         1.2000
-         3.0000
-        [torch.FloatTensor of size (2,)]
+        tensor([ 1.2000, 3.0000])
 
     """
     if isinstance(t, _string_classes):
@@ -160,12 +157,12 @@ def set_default_dtype(d):
     Example::
 
         >>> torch.set_default_tensor_type(torch.double)
-        >>> torch.tensor([1.2, 3], device='cpu')
+        >>> torch.Tensor([1.2, 3])
+        tensor([ 1.2000, 3.0000], dtype=torch.float64)
 
-         1.2000
-         3.0000
-        [torch.DoubleTensor of size (2,)]
-
+        >>> torch.set_default_tensor_type(torch.cuda.double)
+        >>> torch.Tensor([2, 3])
+        tensor([ 2, 3], dtype=torch.cuda.float64)
     """
     _C._set_default_dtype(d)
 
