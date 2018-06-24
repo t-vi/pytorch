@@ -118,12 +118,18 @@ Tensor mm(const Tensor& self, const Tensor& mat2) {
   if (self.is_sparse()) {
     return mat2.type().addmm(at::zeros(mat2.type(), {}), self, mat2, 0, 1);
   }
+  if (mat2.is_sparse()) {
+    return self.type().addmm(at::zeros(self.type(), {}), mat2.t(), self.t(), 0, 1).t();
+  }
   return self.type()._mm(self, mat2);
 }
 
 Tensor& mm_out(Tensor& result, const Tensor& self, const Tensor& mat2) {
   if (self.is_sparse()) {
     return mat2.type().addmm_out(result, at::zeros(mat2.type(), {}), self, mat2, 0, 1);
+  }
+  if (mat2.is_sparse()) {
+    return self.type().addmm_out(result, at::zeros(self.type(), {}), mat2.t(), self.t(), 0, 1).t_();
   }
   return self.type()._mm_out(result, self, mat2);
 }

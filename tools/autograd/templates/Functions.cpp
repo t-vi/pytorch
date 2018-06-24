@@ -1,6 +1,7 @@
 #include "Functions.h"
 #include <ATen/WrapDimUtils.h>
 #include <ATen/WrapDimUtilsMulti.h>
+#include <ATen/optional.h>
 
 // define constants like M_PI and C keywords for MSVC
 #ifdef _MSC_VER
@@ -65,6 +66,14 @@ Tensor maybe_multiply(const Tensor & t, const Scalar & s) {
     return t;
   } else {
     return t * s;
+  }
+}
+
+at::optional<IntList> maybe_strides(const Tensor & t) {
+  if (t.is_sparse()) {
+    return {};
+  } else {
+    return t.strides();
   }
 }
 
@@ -417,18 +426,18 @@ std::vector<Tensor> cat_tensors_backward(const Tensor & grad, const std::vector<
   return grad_inputs;
 }
 
-Tensor mm_mat1_backward(const Tensor & grad, const Tensor & mat2, IntList sizes, IntList strides, const Scalar & alpha) {
+Tensor mm_mat1_backward(const Tensor & grad, const Tensor & mat2, IntList sizes, at::optional<IntList> strides, const Scalar & alpha) {
   // if input was column-major, return grad as column-order for efficiency
-  if (strides[0] == 1 && strides[1] == sizes[0]) {
+  if (strides && (*strides)[0] == 1 && (*strides)[1] == sizes[0]) {
     return maybe_multiply(mat2.mm(grad.t()).t(), alpha);
   } else {
     return maybe_multiply(grad.mm(mat2.t()), alpha);
   }
 }
 
-Tensor mm_mat2_backward(const Tensor & grad, const Tensor & mat1, IntList sizes, IntList strides, const Scalar & alpha) {
+Tensor mm_mat2_backward(const Tensor & grad, const Tensor & mat1, IntList sizes, at::optional<IntList> strides, const Scalar & alpha) {
   // if input was column-major, return grad as column-order for efficiency
-  if (strides[0] == 1 && strides[1] == sizes[0]) {
+  if (strides && (*strides)[0] == 1 && (*strides)[1] == sizes[0]) {
     return maybe_multiply(grad.t().mm(mat1).t(), alpha);
   } else {
     return maybe_multiply(mat1.t().mm(grad), alpha);
