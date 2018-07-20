@@ -1030,6 +1030,12 @@ def linear(input, weight, bias=None):
 
 
 def bilinear(input1, input2, weight, bias=None):
+    r"""bilinear(input1, input2, weight, bias=None) -> Tensor
+
+    Applies the bilinear function :math:`y = x_1 A x_2 + b`
+
+    See :class:`~torch.nn.Bilinear` for more details.
+    """
     return torch.bilinear(input1, input2, weight, bias)
 
 
