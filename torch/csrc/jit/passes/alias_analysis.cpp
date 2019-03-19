@@ -576,6 +576,11 @@ void AliasDb::analyzeSubgraph(Node* node) {
 
   analyze(subgraphBlock);
 
+  // fusion groups may have fused copy_ now...
+  const auto subgraphWrites = getWrites(subgraph->block());
+  for (const auto write : subgraphWrites) {
+    registerWrite(write, node);
+  }
   // TODO(suo): the subgraph outputs and node outputs are NOT NECESSARILY the
   // same length. Autodifferentiation maybe capture additional outputs in the
   // subgraph block.

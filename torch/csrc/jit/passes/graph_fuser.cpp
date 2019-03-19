@@ -1125,6 +1125,31 @@ struct GraphFuser {
     }
   }
 
+  void fuseCopy() {
+    bool have_changed = false;
+    for (auto it = block_->nodes().rbegin(); it != block_->nodes().rend(); ) {
+      Node* copy = *it;
+      ++it;
+      if (! copy->matches("aten::copy_(Tensor self, Tensor other) -> Tensor")) {
+	continue;
+      }
+      Node* inp = copy->inputs()[1]->node();
+      if (inp->kind() != prim::FusionGroup) {
+	// we're only interest in those that come from fusion groups
+	continue;
+      }
+      copy = createSingletonFusionGroup(copy); // note deletes old node
+      if (*it == inp) { // merging will delete inp
+	it++;
+      }
+      mergeFusionGroups(copy, inp);
+      have_changed = true;
+    }
+    if (have_changed) {
+      refreshAliasDb();
+    }
+  }
+
   void optimizeFusedGraphs() {
     for (Node* node : block_->nodes()) {
       if (node->kind() != prim::FusionGroup) {
@@ -1167,6 +1192,7 @@ struct GraphFuser {
     refreshAliasDb();
 
     fuseConcats();
+    fuseCopy();
 
     optimizeFusedGraphs();
 

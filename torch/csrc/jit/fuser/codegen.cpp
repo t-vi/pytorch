@@ -373,6 +373,25 @@ std::string generateKernel(
     body << format("${lhs_type} ${node} = ${access};\n", env);
   }
 
+  auto emit_set_output =
+      [&](const Value* output_value, const TensorDesc& output_desc,
+          TemplateEnv& env) {
+        env.s("access", format("t${formal}.data[t${formal}_offset]", env));
+        env.s("node", valueName(output_value));
+
+        // Acquires and converts (if needed) outputs
+        // Note: conversion to half is only supported for CUDA kernels.
+        const auto is_half =
+            (output_desc.scalar_type == at::ScalarType::Half);
+        if (is_half) {
+          AT_ASSERT(use_cuda);
+          body << format("${access} = __float2half(${node});\n", env);
+          has_half_tensor = true;
+        } else {
+          body << format("${access} = ${node};\n", env);
+        }
+      };
+
   bool has_random = false;
   // Generates code for intermediate nodes
   // Note: Concat and Chunk are implicitly generated
@@ -386,6 +405,17 @@ std::string generateKernel(
       continue;
     if (n->kind() == prim::ConstantChunk)
       continue;
+    if (n->kind() == aten::copy_) {
+      // N.B. assumes tensor inputs first! (which is true, and needs to remain
+      // true)
+      auto it = std::find(
+          graph.inputs().begin(), graph.inputs().end(), n->inputs()[0]);
+      AT_ASSERT(it != graph.inputs().end());
+      size_t formal_idx = std::distance(graph.inputs().begin(), it);
+      env.d("formal", formal_idx);
+      emit_set_output(n->inputs()[1], inputs.at(formal_idx).second, env);
+      continue;
+    }
     if (n->mustBeNone())
       continue;
     if (n->kind() == aten::rand_like) {
@@ -402,19 +432,7 @@ std::string generateKernel(
   // Generates writes to output tensors
   for (const auto& output : outputs) {
     env.d("formal", formal_count++);
-    env.s("access", format("t${formal}.data[t${formal}_offset]", env));
-    env.s("node", valueName(output.first));
-
-    // Acquires and converts (if needed) outputs
-    // Note: conversion to half is only supported for CUDA kernels.
-    const auto is_half = (output.second.scalar_type == at::ScalarType::Half);
-    if (is_half) {
-      AT_ASSERT(use_cuda);
-      body << format("${access} = __float2half(${node});\n", env);
-      has_half_tensor = true;
-    } else {
-      body << format("${access} = ${node};\n", env);
-    }
+    emit_set_output(output.first, output.second, env);
   }
 
   // Includes headers

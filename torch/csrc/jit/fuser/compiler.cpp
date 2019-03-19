@@ -151,6 +151,11 @@ static void setInputBroadcastGroups(KernelSpec& spec) {
       broadcast_groups.insert(getInputDependencies(output));
     }
   }
+  for (const Node* node : spec.graph()->nodes()) {
+    if (node->kind() == aten::copy_) {
+      broadcast_groups.insert(getInputDependencies(node->inputs()[1]));
+    }
+  }
   std::copy(
       broadcast_groups.begin(),
       broadcast_groups.end(),
