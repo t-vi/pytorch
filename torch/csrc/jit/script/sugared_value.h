@@ -524,6 +524,39 @@ struct TORCH_API ClassNewMethod : public SugaredValue {
   ClassTypePtr type_;
 };
 
+struct TORCH_API AutogradFunctionStaticMethod : public SugaredValue {
+  AutogradFunctionStaticMethod(ClassTypePtr type, std::string method_name)
+      : type_(type), method_name_(std::move(method_name)) {}
+  std::string kind() const override {
+    return "autogradfunction";
+  }
+
+  std::shared_ptr<SugaredValue> call(
+      const SourceRange& loc,
+      Function& f,
+      at::ArrayRef<NamedValue> inputs,
+      at::ArrayRef<NamedValue> attributes,
+      size_t n_binders) override {
+    // std::vector<NamedValue> inputsWithSelf = {self_};
+    // if (method_name_ == "apply") { // and self.class is Context
+    auto method = type_->getMethod(method_name_);
+    auto backward = type_->getMethod("backward");
+    TORCH_INTERNAL_ASSERT(method);
+    TORCH_INTERNAL_ASSERT(backward);
+    method->ensure_defined();
+    backward->ensure_defined();
+    MatchedSchema match =
+        matchSchema(method->getSchema(), loc, *f.graph(), inputs, attributes);
+    // type_->qualname()+"."+method_name_
+    auto res = std::make_shared<SimpleValue>(
+        f.graph()->insertAutogradFunctionCall(method, backward, match));
+    return res;
+  }
+
+  ClassTypePtr type_;
+  std::string method_name_;
+};
+
 static inline std::vector<Value*> toValues(
     Graph& g,
     at::ArrayRef<NamedValue> nvs) {

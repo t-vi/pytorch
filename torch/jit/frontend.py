@@ -138,10 +138,11 @@ def _uses_true_division(fn):
             '_uses_true_division: expected function or method, got {}'.format(type(fn)))
 
 
-def get_jit_class_def(cls, self_name):
+def get_jit_class_def(cls, self_name, method_filter=None):
     # Get defs for each method independently
     methods = inspect.getmembers(
-        cls, predicate=lambda m: inspect.ismethod(m) or inspect.isfunction(m))
+        cls, predicate=lambda m: ((inspect.ismethod(m) or inspect.isfunction(m)) and
+                                  (method_filter is None or m.__name__ in method_filter)))
     method_defs = [get_jit_def(method[1],
                    self_name=self_name) for method in methods]
 
@@ -192,6 +193,8 @@ def build_class_def(ctx, py_def, methods, self_name):
 
 
 def build_def(ctx, py_def, type_line, self_name=None):
+    if [1 for d in py_def.decorator_list if getattr(d, "id", None) == "staticmethod"]:
+        self_name = None
     body = py_def.body
     r = ctx.make_range(py_def.lineno, py_def.col_offset,
                        py_def.col_offset + len("def"))

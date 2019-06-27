@@ -42,6 +42,7 @@ void inlineCalls(Block* block) {
         const std::string& name = cur->s(attr::name);
         auto function =
             cur->inputs().at(0)->type()->expect<ClassType>()->getMethod(name);
+        TORCH_INTERNAL_ASSERT(function);
         replace(cur, function, cur->inputs());
         cur->destroy();
       } break;

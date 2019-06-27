@@ -182,11 +182,15 @@ void SimpleValue::setAttr(
     // We are initializing if:
     const auto isInitializing =
         // 1. The method we're currently inserting into is an init method
-        m.name() == "__init__" &&
-        // 2. The `self` arg matches this value's type (i.e. we are in the init
-        // method for this class, not some other class)
-        !m.graph()->inputs().empty() &&
-        m.graph()->inputs().at(0)->type() == classType;
+        (m.name() == "__init__" &&
+         // 2. The `self` arg matches this value's type (i.e. we are in the init
+         // method for this class, not some other class)
+         !m.graph()->inputs().empty() &&
+         m.graph()->inputs().at(0)->type() == classType) ||
+        (m.name() == "forward" && !m.graph()->inputs().empty() &&
+         m.graph()->inputs().at(0)->type()->kind() == TypeKind::ClassType &&
+         m.graph()->inputs().at(0)->type()->expect<ClassType>()->basename() ==
+             "$Context");
 
     if (isInitializing) {
       if (isRecursive(classType, newValue->type())) {
@@ -405,6 +409,11 @@ std::shared_ptr<SugaredValue> ClassValue::attr(
     const SourceRange& loc,
     Function& m,
     const std::string& field) {
+  // TODO: how to check whether the class is a subclass of autograd.Function
+  if (field == "forward" || field == "backward" || field == "apply") {
+    return std::make_shared<AutogradFunctionStaticMethod>(type_, field);
+  }
+
   if (field != "__new__") {
     throw ErrorReport(loc) << "Tried to lookup unknown attribute on class";
   }

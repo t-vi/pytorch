@@ -397,7 +397,7 @@ inline bool any_variable_requires_grad(const variable_list& variables) {
 
 /// Return the next edges of all the given variables, or tuples of variables.
 template <typename... Variables>
-edge_list collect_next_edges(Variables&&... variables) {
+TORCH_API edge_list collect_next_edges(Variables&&... variables) {
   if (!GradMode::is_enabled())
     return {};
   detail::MakeNextFunctionList make;

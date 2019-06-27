@@ -56,6 +56,7 @@ _enabled = _parse_env('PYTORCH_JIT', True, "> Using PyTorch JIT", "> PyTorch JIT
 _flatten = torch._C._jit_flatten
 _unflatten = torch._C._jit_unflatten
 _jit_script_class_compile = torch._C._jit_script_class_compile
+_jit_script_autograd_class_compile = torch._C._jit_script_autograd_class_compile
 
 Future = torch._C.Future
 _fork = torch._C.fork
@@ -1119,11 +1120,25 @@ def script(obj, optimize=True, _frames_up=0, _rcb=None):
             return _convert_to_script_module(obj)
 
     if inspect.isclass(obj):
+        if issubclass(obj, torch.autograd.Function) and 0:
+            # assert staticmethod
+            # https://stackoverflow.com/questions/8727059/python-check-if-method-is-static
+            # using __dict__ works for Python 2 and 3
+            assert isinstance(obj.__dict__['forward'], staticmethod)
+            assert isinstance(obj.__dict__['backward'], staticmethod)
+            ast_fw = get_jit_def(obj.forward, self_name='ctx')
+            ast_bw = get_jit_def(obj.backward, self_name='ctx')
+            #fn_fw = torch._C._jit_script_compile(ast_fw, _rcb, get_default_args(obj.forward))
+            return ast_fw, ast_bw
         if not _is_new_style_class(obj):
             raise RuntimeError("TorchScript classes must be new-style classes. Please inherit from 'object'")
         qualified_name = _qualified_name(obj)
-        ast = get_jit_class_def(obj, obj.__name__)
-        _jit_script_class_compile(qualified_name, ast, _rcb)
+        method_filter = {"forward", "backward"} if issubclass(obj, torch.autograd.Function) else None
+        ast = get_jit_class_def(obj, obj.__name__, method_filter=method_filter)
+        if issubclass(obj, torch.autograd.Function):
+            _jit_script_autograd_class_compile(qualified_name, ast, _rcb)
+        else:
+            _jit_script_class_compile(qualified_name, ast, _rcb)
         _add_script_class(obj, qualified_name)
         return obj
     else:

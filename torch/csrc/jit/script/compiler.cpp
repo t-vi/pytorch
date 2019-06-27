@@ -492,7 +492,8 @@ struct to_ir {
       const Def& def,
       ResolverPtr resolver_,
       const Self& self,
-      Function& method) // method being constructed
+      Function& method,
+      bool is_autograd_function) // method being constructed
       : method(method),
         graph(method.graph()),
         resolver(std::move(resolver_)),
@@ -508,8 +509,67 @@ struct to_ir {
       throw ErrorReport(def.decl().params().range())
           << "methods must have a self argument";
     }
-    method.setSchema(emitDef(def, self, graph->block()));
-    runCleanupPasses(graph);
+    auto schema = emitDef(def, self, graph->block());
+    if (is_autograd_function) {
+      auto ctx_type = schema.arguments().at(0).type()->expect<ClassType>();
+      if (schema.name() == "backward") {
+        auto ctx_tuple_type =
+            TupleType::create(ctx_type->containedTypes().vec());
+        Value* v = graph->insertInput(1, "ctx")->setType(ctx_tuple_type);
+        WithInsertPoint guard(graph->param_node()->next());
+        auto ctx_vals = createTupleUnpack(v);
+        for (size_t i = 0; i < ctx_type->numAttributes(); i++) {
+          environment_stack->setVar(
+              SourceRange(""),
+              "$ctx_" + ctx_type->getAttributeName(i),
+              ctx_vals[i]);
+        }
+      }
+      replaceCtxAssignWithSetGetVariable(graph->block(), ctx_type);
+      if (schema.name() == "forward") {
+        WithInsertPoint guard(graph->return_node());
+        Value* ctx_tuple = graph
+                               ->insertNode(graph->createTuple(fmap(
+                                   ctx_type->attributeNames(),
+                                   [this](const std::string& n) {
+                                     return environment_stack->getVar(
+                                         "$ctx_" + n, SourceRange(""));
+                                   })))
+                               ->output();
+        std::vector<Value*> return_tuple;
+        TypePtr out_type = graph->outputs().at(0)->type();
+        if (out_type->kind() == TypeKind::TupleType) {
+          return_tuple = graph->outputs().at(0)->node()->inputs().vec();
+        } else {
+          return_tuple.push_back(graph->outputs().at(0));
+        }
+        return_tuple.push_back(ctx_tuple);
+        Value* new_output =
+            graph->insertNode(graph->createTuple(return_tuple))->output();
+        graph->eraseOutput(0);
+        graph->registerOutput(new_output);
+      }
+      runCleanupPasses(graph);
+      if (schema.name() == "forward") {
+        TORCH_INTERNAL_ASSERT(!graph->inputs().at(0)->hasUses());
+        graph->eraseInput(0);
+        std::vector<Argument> args(
+            schema.arguments().begin() + 1, schema.arguments().end());
+        schema = FunctionSchema(
+            schema.name(), schema.overload_name(), args, schema.returns());
+      } else if (schema.name() == "backward") {
+        TORCH_INTERNAL_ASSERT(!graph->inputs().at(0)->hasUses());
+        graph->eraseInput(0);
+        std::vector<Argument> args(schema.arguments());
+        args[0] = Argument("__ctx", graph->inputs()[0]->type());
+        schema = FunctionSchema(
+            schema.name(), schema.overload_name(), args, schema.returns());
+      }
+      method.setSchema(schema);
+    } else { // is_autograd_function
+      runCleanupPasses(graph);
+      method.setSchema(schema);
+    }
   }
 
  private:
@@ -524,6 +584,44 @@ struct to_ir {
   // `next` that points to the most immediate enclosing scope's value.
   std::shared_ptr<Environment> environment_stack;
   std::vector<DefContext> def_stack_;
+
+  void replaceCtxAssignWithSetGetVariable(Block* block, TypePtr ctx_type) {
+    for (auto it = block->nodes().rbegin(); it != block->nodes().rend();) {
+      auto* node = *it++;
+      for (Block* sub_block : node->blocks()) {
+        replaceCtxAssignWithSetGetVariable(sub_block, ctx_type);
+      }
+      if (node->kind() == prim::SetAttr &&
+          node->inputs().at(0)->type() == ctx_type) {
+        WithInsertPoint guard(node);
+        environment_stack->setVar(
+            node->sourceRange(),
+            "$ctx_" + node->s(attr::name),
+            node->inputs().at(1));
+        node->destroy();
+      } else if (
+          node->kind() == prim::GetAttr &&
+          node->inputs().at(0)->type() == ctx_type) {
+        WithInsertPoint guard(node);
+        Value* v = environment_stack->getVar(
+            "$ctx_" + node->s(attr::name), node->sourceRange());
+        node->output()->replaceAllUsesWith(v);
+        node->destroy();
+      } else if (
+          node->kind() == prim::CallMethod &&
+          node->inputs().at(0)->type() == ctx_type) {
+        TORCH_CHECK(
+            node->s(attr::name) == "save_for_backward",
+            "sorry, ",
+            node->s(attr::name),
+            " is not supported");
+        WithInsertPoint guard(node);
+        environment_stack->setVar(
+            node->sourceRange(), "$ctx_saved_tensors", node->inputs().at(1));
+        node->destroy();
+      }
+    }
+  }
 
   void pushFrame(Block* b, bool starts_def = false) {
     if (starts_def) {
@@ -2952,7 +3050,8 @@ std::shared_ptr<Function> CompilationUnit::define(
     const ResolverPtr& resolver,
     const Self& self,
     const std::unordered_map<std::string, std::shared_ptr<Function>>&
-        function_table) const {
+        function_table,
+    bool is_autograd_function) const {
   const std::string& name = def.name().name();
   TORCH_INTERNAL_ASSERT(resolver);
   auto _resolver = resolver;
@@ -2963,8 +3062,8 @@ std::shared_ptr<Function> CompilationUnit::define(
     _resolver =
         std::make_shared<FunctionResolver>(resolver.get(), function_table);
   }
-  auto creator = [def, _resolver, self](Function& method) {
-    to_ir(def, _resolver, self, method);
+  auto creator = [def, _resolver, self, is_autograd_function](Function& method) {
+    to_ir(def, _resolver, self, method, is_autograd_function);
   };
   return std::make_shared<Function>(
       name, is_optimized(), std::make_shared<Graph>(), creator);
@@ -2973,14 +3072,15 @@ std::shared_ptr<Function> CompilationUnit::define(
 void CompilationUnit::define(
     const std::vector<Def>& definitions,
     const std::vector<ResolverPtr>& resolvers,
-    const Self& self) {
+    const Self& self,
+    bool is_autograd_function) {
   AT_ASSERT(definitions.size() == resolvers.size());
   // We need to compile `__init__` first, since it can determine what attributes
   // are available to other methods. So reorder the definitions accordingly.
   c10::optional<size_t> init_idx;
   for (size_t i = 0; i < definitions.size(); i++) {
     const auto& def = definitions[i];
-    if (def.name().name() == "__init__") {
+    if (def.name().name() == (is_autograd_function ? "forward" : "__init__")) {
       init_idx = i;
       break;
     }
@@ -2990,8 +3090,7 @@ void CompilationUnit::define(
   std::unordered_map<std::string, std::shared_ptr<Function>> function_table;
   if (init_idx.has_value()) {
     // if we have an init, do it first.
-    auto fn = define(
-        definitions[*init_idx], resolvers[*init_idx], self, function_table);
+    auto fn = define(definitions[*init_idx], resolvers[*init_idx], self, function_table, is_autograd_function);
     const auto& name = fn->name();
     function_table[name] = fn;
     methods.push_back(fn.get());
@@ -3004,7 +3103,7 @@ void CompilationUnit::define(
       continue;
     }
 
-    auto fn = define(definitions[i], resolvers[i], self, function_table);
+    auto fn = define(definitions[i], resolvers[i], self, function_table, is_autograd_function);
     const auto& name = fn->name();
     function_table[name] = fn;
     methods.push_back(fn.get());

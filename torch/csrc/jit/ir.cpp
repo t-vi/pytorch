@@ -1465,6 +1465,24 @@ Value* Graph::insertFunctionCall(
   return result;
 }
 
+Value* Graph::insertAutogradFunctionCall(
+    std::shared_ptr<Function> callee,
+    std::shared_ptr<Function> backward,
+    script::MatchedSchema& matched) {
+  Value* fn_constant = insertNode(create(prim::Constant))
+                           ->output()
+                           ->setType(FunctionType::create(std::move(callee)));
+  Value* bw_constant = insertNode(create(prim::Constant))
+                           ->output()
+                           ->setType(FunctionType::create(std::move(backward)));
+  std::vector<Value*> inputs = {fn_constant, bw_constant};
+  inputs.insert(inputs.end(), matched.inputs.begin(), matched.inputs.end());
+  Value* result = insertNode(create(prim::CallAutogradFunction, inputs))
+                      ->output()
+                      ->setType(matched.return_types.at(0));
+  return result;
+}
+
 Value* Graph::insertMethodCall(
     std::string method_name,
     script::MatchedSchema& matched) {

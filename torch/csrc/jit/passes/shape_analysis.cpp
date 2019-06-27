@@ -7,6 +7,7 @@
 #include <torch/csrc/jit/operator.h>
 #include <torch/csrc/jit/passes/alias_analysis.h>
 #include <torch/csrc/jit/script/error_report.h>
+#include <torch/csrc/jit/script/module.h>
 
 #include <torch/csrc/autograd/variable.h>
 
@@ -474,6 +475,32 @@ class ShapePropagator {
     // These don't require the types, and have complicated schema. Return early
     // after we process them.
     switch (node->kind()) {
+      case prim::CallAutogradFunction: {
+        TORCH_INTERNAL_ASSERT(
+            node->inputs().at(0)->node()->kind() == prim::Constant &&
+            node->inputs().at(1)->node()->kind() == prim::Constant);
+        auto function_constant = node->inputs().at(0)->node();
+        auto fun_type =
+            function_constant->output()->type()->expect<FunctionType>();
+        auto fun_graph = fun_type->function()->graph()->copy();
+        auto fun_block = fun_graph->block();
+        for (size_t i = 2; i < node->inputs().size(); ++i) {
+          fun_block->inputs().at(i - 2)->setType(node->inputs().at(i)->type());
+        }
+        PropagateShapeOnBlock(fun_block);
+        // This will be a tuple with the ctx at the end.
+        TORCH_INTERNAL_ASSERT(fun_block->outputs().size() == 1);
+        auto element_types =
+            fun_block->outputs().at(0)->type()->expect<TupleType>()->elements();
+        TORCH_INTERNAL_ASSERT(element_types.size() >= 2);
+        if (element_types.size() == 2) {
+          node->output()->setType(element_types[0]);
+        } else {
+          node->output()->setType(TupleType::create(
+              element_types.slice(0, element_types.size() - 1).vec()));
+        }
+        return;
+      }
       case prim::If: {
         auto then_block = node->blocks().at(0);
         auto else_block = node->blocks().at(1);

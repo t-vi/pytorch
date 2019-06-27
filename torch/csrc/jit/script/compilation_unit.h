@@ -72,7 +72,8 @@ struct TORCH_API CompilationUnit {
           resolvers, /* determines how we handle free
                      variables in each definition*/
       // if non-null, the first argument to each def, is bound to this value
-      const Self& self);
+      const Self& self,
+      bool is_autograd_function = false);
 
   // same as above but parse the definitions from source
   void define(
@@ -175,7 +176,8 @@ struct TORCH_API CompilationUnit {
       const ResolverPtr& resolver,
       const Self& self,
       const std::unordered_map<std::string, std::shared_ptr<Function>>&
-          function_table) const;
+          function_table,
+      bool is_autograd_function) const;
 
   Function& register_function(std::shared_ptr<Function> fn) {
     TORCH_CHECK(

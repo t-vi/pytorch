@@ -161,6 +161,25 @@ struct PythonResolver : public Resolver {
   ClassTypePtr classType_;
 };
 
+struct AutogradFunctionResolver : public PythonResolver {
+  explicit AutogradFunctionResolver(
+      ResolutionCallback rcb,
+      std::string classname,
+      ClassTypePtr classType,
+      ClassTypePtr contextType)
+      : PythonResolver(rcb, classname, classType), contextType_(contextType) {}
+
+  TypePtr resolveType(const std::string& name, const SourceRange& loc) const override {
+    if (name == "$Context") {
+      return contextType_;
+    }
+    return PythonResolver::resolveType(name, loc);
+  }
+
+ private:
+  ClassTypePtr contextType_;
+};
+
 std::shared_ptr<PythonResolver> pythonResolver(ResolutionCallback rcb) {
   return std::make_shared<PythonResolver>(rcb);
 }
@@ -171,6 +190,16 @@ std::shared_ptr<PythonResolver> pythonResolver(
   return std::make_shared<PythonResolver>(
       rcb, std::move(classname), std::move(classType));
 }
+
+std::shared_ptr<AutogradFunctionResolver> autogradFunctionResolver(
+    ResolutionCallback rcb,
+    std::string classname,
+    ClassTypePtr classType,
+    ClassTypePtr contextType) {
+  return std::make_shared<AutogradFunctionResolver>(
+      rcb, std::move(classname), std::move(classType), std::move(contextType));
+}
+
 } // namespace
 
 FunctionSchema getSchemaWithNameAndDefaults(
@@ -689,6 +718,56 @@ void initJitScriptBindings(PyObject* module) {
               pythonResolver(rcb, classDef.name().name(), classType));
         }
         cu->define(methodDefs, rcbs, simpleSelf(classType));
+      });
+
+  m.def(
+      "_jit_script_autograd_class_compile",
+      [](const std::string& qualifiedName,
+         const ClassDef& classDef,
+         ResolutionCallback rcb) {
+        C10_LOG_API_USAGE_ONCE("torch.script.autograd_class");
+        auto cu = std::make_shared<CompilationUnit>();
+        auto cu_context = std::make_shared<CompilationUnit>();
+        auto sr = classDef.defs()[0].decl().params().range();
+        auto new_ctx_type_expr = Maybe<Expr>::create(
+            sr, Expr(Var::create(sr, Ident::create(sr, "$Context"))));
+
+        auto classType =
+            ClassType::create(c10::QualifiedName(qualifiedName), cu);
+        auto contextType = ClassType::create(
+            c10::QualifiedName(qualifiedName + ".$Context"), cu_context);
+        contextType->addAttribute("saved_tensors", ListType::ofTensors());
+        cu_context->define(
+            R"(
+            def save_for_backward(self, tensors : List[Tensor]) -> None:
+                pass
+        )",
+            script::nativeResolver(),
+            simpleSelf(contextType));
+
+        CompilationUnit::_get_python_cu().register_class(classType);
+        std::vector<ResolverPtr> rcbs;
+        std::vector<Def> methodDefs;
+        for (const auto& def : classDef.defs()) {
+          // replace the ctx type
+          std::vector<Param> new_params = {
+              def.decl().params()[0].withType(new_ctx_type_expr)};
+          for (size_t i = 1; i < def.decl().params().size(); ++i) {
+            new_params.emplace_back(def.decl().params()[i]);
+          }
+          auto new_decl = Decl::create(
+              def.decl().range(),
+              List<Param>::create(def.decl().range(), new_params),
+              def.decl().return_type());
+          auto new_def =
+              Def::create(def.range(), def.name(), new_decl, def.statements());
+          methodDefs.push_back(new_def);
+          rcbs.push_back(autogradFunctionResolver(
+              rcb, classDef.name().name(), classType, contextType));
+        }
+        // alternatively to is_autograd_function, we could abuse self...
+        cu->define(methodDefs, rcbs, nullptr, /*is_autograd_function=*/true);
+	cu->create_function("apply", cu->get_function("forward").graph()->copy());
       });
 
   m.def("parse_type_comment", [](const std::string& comment) {
