@@ -1084,7 +1084,7 @@ def _enable_recursive_script():
     torch._C._jit_recursive_script(False)
 
 
-def script(obj, optimize=True, _frames_up=0, _rcb=None, _autograd=False):
+def script(obj, optimize=True, _frames_up=0, _rcb=None):
     if not _enabled:
         return obj
     if _rcb is None:
@@ -1110,7 +1110,14 @@ def script(obj, optimize=True, _frames_up=0, _rcb=None, _autograd=False):
         return fn
 
 def autograd_script(fn):
-    return script(fn, _frames_up=1, _autograd=True)
+    if not _enabled:
+        return fn
+    _rcb = _jit_internal.createResolutionCallback(1)
+    ast = get_jit_def(fn, _is_autograd=True)
+    fn = torch._C._jit_autograd_script_compile(ast, _rcb, get_default_args(fn))
+    # Forward docstrings
+    fn.__doc__ = fn.__doc__
+    return fn
 
 ScriptMethodStub = namedtuple('ScriptMethodStub', ('resolution_callback', 'def_', 'original_method'))
 

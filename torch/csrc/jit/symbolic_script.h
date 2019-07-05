@@ -16,5 +16,7 @@ struct GradientPair {
 TORCH_API c10::optional<GradientPair> gradientInfoForSchema(
     const FunctionSchema& schema);
 TORCH_API bool hasGradientInfoForSchema(const FunctionSchema& schema);
+TORCH_API std::pair<GradientPair, FunctionSchema> getGradientPairAndSchema(const Function* method);
+
 } // namespace jit
 } // namespace torch
