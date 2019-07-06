@@ -76,7 +76,8 @@ bool isDifferentiable(Node* n) {
   // Tensor", "aten::min(Tensor self) -> Tensor"
 
   if (n->kind() == prim::Constant || n->kind() == prim::AutogradZero ||
-      n->kind() == prim::AutogradAdd || n->kind() == prim::ConstantChunk)
+      n->kind() == prim::AutogradAdd || n->kind() == prim::ConstantChunk ||
+      n->kind() == prim::CallAutogradFunction)
     return true;
   if (differentiable_ops.find(n))
     return true;
@@ -189,6 +190,69 @@ static c10::optional<std::vector<Value*>> build_script_grad(
   return grad_inputs;
 };
 
+static std::vector<Value*> build_autograd_function_grad(
+    Node* node,
+    const ArrayRef<Value*>& grads) {
+  auto graph = node->owningGraph();
+  TORCH_INTERNAL_ASSERT(
+      node->inputs().at(0)->node()->kind() == prim::Constant &&
+      node->inputs().at(1)->node()->kind() == prim::Constant);
+  auto fw_function_constant = node->inputs().at(0)->node();
+  auto fw_fun = fw_function_constant->output()
+                    ->type()
+                    ->expect<FunctionType>()
+                    ->function();
+  auto bw_function_constant = node->inputs().at(1)->node();
+  auto bw_fun = bw_function_constant->output()
+                    ->type()
+                    ->expect<FunctionType>()
+                    ->function();
+
+  // auto compiled_graphs = gradientInfoForSchema(node->schema());
+  // Use forward graph to replace node in grad_desc.f
+  value_list new_outputs;
+  {
+    WithInsertPoint guard(node->next());
+    auto fw_graph = fw_fun->graph();
+    new_outputs = inlineCallTo(
+        *graph, *fw_graph, node->inputs().slice(2), /*unpack_outputs=*/true);
+    auto outputs = node->outputs();
+    AT_ASSERT(new_outputs.size() == outputs.size() + 1);
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      new_outputs.at(i)->setType(outputs[i]->type());
+      outputs[i]->replaceAllUsesWith(new_outputs.at(i));
+    }
+  }
+
+  // Use backward graph to construct reverse_block
+  auto bw_graph = bw_fun->graph();
+  TORCH_INTERNAL_ASSERT(
+      grads.size() == 1); // ASSERT that we get 1 value that is a tuple, to
+                          // match the (tuple) return from the python functon.
+                          // the -1 element is the grad for context, i.e. junk
+  auto grad_vec = grads.vec();
+  // todo... multiple outputs
+  /*if (needTrimGrad(node)) {
+    grad_vec.erase(grad_vec.begin() + 1, grad_vec.end());
+    }*/
+  auto it = grad_vec.begin();
+  grad_vec.insert(it, new_outputs.back());
+
+  ArrayRef<Value*> grad(grad_vec);
+  auto grad_inputs =
+      inlineCallTo(*graph, *bw_graph, grad, /*unpack_outputs=*/true);
+
+  /*
+  node->destroy();
+  if (!fw_function_constant->hasUses()) {
+    fw_function_constant->destroy();
+  }
+  if (!bw_function_constant->hasUses()) {
+    bw_function_constant->destroy();
+    }*/
+  return grad_inputs;
+};
+
 namespace {
 class GradientHelper {
  public:
@@ -199,6 +263,9 @@ class GradientHelper {
       throw std::runtime_error(
           std::string("differentiation of ") + node->kind().toDisplayString() +
           " is not supported, or it is missing necessary type information");
+    }
+    if (node->kind() == prim::CallAutogradFunction) {
+      return build_autograd_function_grad(node, grad_values);
     }
     // If AD is defined using torchscript, use it instead of symbolic
     auto script_grads = build_script_grad(node, grad_values);
@@ -564,7 +631,10 @@ static ReverseDetails addReverseInline(Gradient& grad_desc) {
         linearGradientForNode(node, fmap(node->outputs(), get_grad));
     LowerSimpleTuples(reverse_block);
 
-    AT_ASSERT(grad_inputs.size() == node->inputs().size());
+    if (node->kind() == prim::CallAutogradFunction) {
+      inputs = inputs.slice(2);
+    }
+    AT_ASSERT(grad_inputs.size() == inputs.size());
     for (size_t i = 0, num_inputs = grad_inputs.size(); i < num_inputs; ++i) {
       if (!inputs[i]->requires_grad())
         continue;
