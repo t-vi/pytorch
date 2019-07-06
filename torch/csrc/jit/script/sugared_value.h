@@ -290,9 +290,10 @@ struct AutogradFunctionValue : public SugaredValue {
       at::ArrayRef<NamedValue> attributes,
       size_t n_binders) override {
     callee_->ensure_defined();
+    backward_->ensure_defined();
     MatchedSchema match =
         matchSchema(callee_->getSchema(), loc, *f.graph(), inputs, attributes);
-    Value* output = f.graph()->insertAutogradFunctionCall(callee_, match);
+    Value* output = f.graph()->insertAutogradFunctionCall(callee_, backward_, match);
     output->node()->setSourceRange(loc);
     return std::make_shared<SimpleValue>(output);
   }
