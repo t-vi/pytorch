@@ -638,7 +638,8 @@ void initJitScriptBindings(PyObject* module) {
         return self.function_->name();
       });
 
-  py::class_<StrongAutogradFunctionPtr>(m, "AutogradFunction", py::dynamic_attr())
+  py::class_<StrongAutogradFunctionPtr>(
+      m, "AutogradFunction", py::dynamic_attr())
       .def(
           "__call__",
           [](py::args args, py::kwargs kwargs) {
@@ -658,7 +659,9 @@ void initJitScriptBindings(PyObject* module) {
           })
       .def_property_readonly(
           "graph",
-          [](const StrongAutogradFunctionPtr& self) { return self.fw_function_->graph(); })
+          [](const StrongAutogradFunctionPtr& self) {
+            return self.fw_function_->graph();
+          })
       .def_property_readonly(
           "schema",
           [](const StrongAutogradFunctionPtr& self) {
@@ -738,19 +741,22 @@ void initJitScriptBindings(PyObject* module) {
         auto cu = std::make_shared<CompilationUnit>();
         tmp_cu.define({def}, {pythonResolver(std::move(rcb))}, nullptr);
         auto defined = tmp_cu.get_functions().at(0);
-	auto pair_schema = getGradientPairAndSchema(defined);
+        auto pair_schema = getGradientPairAndSchema(defined);
         /*defined->setSchema(getSchemaWithNameAndDefaults(
-	  def.range(), defined->getSchema(), def.name().name(), defaults));*/
-	// which of those parts do we need here?
-	auto fw_defined = cu->create_function(def.name().name(), pair_schema.first.forward);
-	fw_defined->setSchema(pair_schema.second);
-	auto bw_defined = cu->create_function(def.name().name()+".backward", pair_schema.first.backward);
-	
+          def.range(), defined->getSchema(), def.name().name(), defaults));*/
+        // which of those parts do we need here?
+        auto fw_defined =
+            cu->create_function(def.name().name(), pair_schema.first.forward);
+        fw_defined->setSchema(pair_schema.second);
+        auto bw_defined = cu->create_function(
+            def.name().name() + ".backward", pair_schema.first.backward);
+
         StrongAutogradFunctionPtr ret(std::move(cu), fw_defined, bw_defined);
-        // didFinishEmitFunction(ret); should I add a new hook type and change pair -> tuple?!
+        // didFinishEmitFunction(ret); should I add a new hook type and change
+        // pair -> tuple?!
         return ret;
       });
-  
+
   m.def(
       "_create_function_from_trace",
       [](std::string name,
