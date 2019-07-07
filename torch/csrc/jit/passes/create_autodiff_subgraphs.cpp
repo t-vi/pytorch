@@ -117,6 +117,10 @@ class SubgraphSlicer {
         node->kind() == prim::CallAutogradFunction) {
       return true;
     }
+    if (node->kind() == prim::TupleUnpack &&
+	shouldConsiderForMerge(node->input()->node())) {
+      return true;
+    }
     if (node->kind() == prim::Constant) {
       return false;
     }

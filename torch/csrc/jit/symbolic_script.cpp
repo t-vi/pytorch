@@ -1344,7 +1344,7 @@ bool isHelperFunction(const std::string& method_name) {
   return method_name.compare(0, helper_prefix.length(), helper_prefix) == 0;
 }
 
-std::pair<GradientPair, FunctionSchema> getGradientPairAndSchema(const Function* method) {
+std::pair<GradientPair, FunctionSchema> getGradientPairAndSchema(const Function* method, bool is_aten) {
   GradientPair pair;
   pair.forward = method->graph();
 
@@ -1377,7 +1377,7 @@ std::pair<GradientPair, FunctionSchema> getGradientPairAndSchema(const Function*
   // derive schema from original function's schema:
   const FunctionSchema& loaded_schema = method->getSchema();
   FunctionSchema actual_schema(
-        Symbol::aten(loaded_schema.name()),
+	is_aten ? Symbol::aten(loaded_schema.name()).toQualString() : loaded_schema.name(),
         loaded_schema.overload_name(),
         loaded_schema.arguments(),
         {originalReturnType(new_tuple->type()->expect<TupleType>())});
@@ -1390,7 +1390,7 @@ void loadModule(const script::CompilationUnit& module) {
     if (isHelperFunction(method->name()))
       continue;
 
-    auto pair_schema = getGradientPairAndSchema(method);
+    auto pair_schema = getGradientPairAndSchema(method, /*is_aten=*/true);
 
     // modify canonical string for function overloading
     // prefer not to modify the schema name

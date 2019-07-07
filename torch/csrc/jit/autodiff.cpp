@@ -77,7 +77,7 @@ bool isDifferentiable(Node* n) {
 
   if (n->kind() == prim::Constant || n->kind() == prim::AutogradZero ||
       n->kind() == prim::AutogradAdd || n->kind() == prim::ConstantChunk ||
-      n->kind() == prim::CallAutogradFunction)
+      n->kind() == prim::CallAutogradFunction || n->kind() == prim::TupleUnpack)
     return true;
   if (differentiable_ops.find(n))
     return true;
@@ -216,11 +216,17 @@ static std::vector<Value*> build_autograd_function_grad(
     auto fw_graph = fw_fun->graph();
     new_outputs = inlineCallTo(
         *graph, *fw_graph, node->inputs().slice(2), /*unpack_outputs=*/true);
-    auto outputs = node->outputs();
-    AT_ASSERT(new_outputs.size() == outputs.size() + 1);
-    for (size_t i = 0; i < outputs.size(); ++i) {
-      new_outputs.at(i)->setType(outputs[i]->type());
-      outputs[i]->replaceAllUsesWith(new_outputs.at(i));
+    auto output = node->output();
+    if (new_outputs.size() > 2) {
+      // our function returns multiple outputs, we have to make it into a tuple
+      Value* tuple_output =
+	graph->insertNode(graph->createTuple(ArrayRef<Value*>(new_outputs).slice(0, new_outputs.size()-1)))->output();
+      tuple_output->setType(output->type());
+      output->replaceAllUsesWith(tuple_output);      
+    } else {
+      TORCH_INTERNAL_ASSERT(new_outputs.size() == 2);
+      new_outputs[0]->setType(output->type());
+      output->replaceAllUsesWith(new_outputs[0]);
     }
   }
 
@@ -230,13 +236,14 @@ static std::vector<Value*> build_autograd_function_grad(
       grads.size() == 1); // ASSERT that we get 1 value that is a tuple, to
                           // match the (tuple) return from the python functon.
                           // the -1 element is the grad for context, i.e. junk
-  auto grad_vec = grads.vec();
-  // todo... multiple outputs
-  /*if (needTrimGrad(node)) {
-    grad_vec.erase(grad_vec.begin() + 1, grad_vec.end());
-    }*/
-  auto it = grad_vec.begin();
-  grad_vec.insert(it, new_outputs.back());
+  std::vector<Value*> grad_vec{new_outputs.back()};
+  if (grads[0]->type()->kind() == TypeKind::TupleType) {
+    auto tuple_outputs =
+      graph->insertNode(graph->createTupleUnpack(grads[0]))->outputs();
+    grad_vec.insert(grad_vec.end(), tuple_outputs.begin(), tuple_outputs.end());
+  } else {
+    grad_vec.emplace_back(grads[0]);
+  }
 
   ArrayRef<Value*> grad(grad_vec);
   auto grad_inputs =
@@ -266,6 +273,10 @@ class GradientHelper {
     }
     if (node->kind() == prim::CallAutogradFunction) {
       return build_autograd_function_grad(node, grad_values);
+    } else if (node->kind() == prim::TupleUnpack) {
+      Value* grad_tuple =
+	node->owningGraph()->insertNode(node->owningGraph()->createTuple(grad_values))->output();
+      return {grad_tuple};
     }
     // If AD is defined using torchscript, use it instead of symbolic
     auto script_grads = build_script_grad(node, grad_values);
