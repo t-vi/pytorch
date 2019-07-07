@@ -77,7 +77,10 @@ bool isDifferentiable(Node* n) {
 
   if (n->kind() == prim::Constant || n->kind() == prim::AutogradZero ||
       n->kind() == prim::AutogradAdd || n->kind() == prim::ConstantChunk ||
-      n->kind() == prim::CallAutogradFunction || n->kind() == prim::TupleUnpack)
+      n->kind() == prim::CallAutogradFunction)
+    return true;
+  if (n->kind() == prim::TupleUnpack && isDifferentiable(n->input()->node()))
+    // we do not want the tuple as output of the graph...
     return true;
   if (differentiable_ops.find(n))
     return true;
