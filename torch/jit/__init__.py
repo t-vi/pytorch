@@ -2100,7 +2100,9 @@ def _graph_for(self, *args, **kwargs):
 
 torch._C.ScriptMethod.graph_for = _graph_for
 torch._C.Function.graph_for = _graph_for
+torch._C.AutogradFunction.graph_for = _graph_for
 Function = torch._C.Function
+Function = torch._C.AutogradFunction
 
 if not torch._C._jit_init():
     raise RuntimeError("JIT initialization failed")

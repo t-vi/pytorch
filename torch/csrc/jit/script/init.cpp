@@ -645,7 +645,7 @@ void initJitScriptBindings(PyObject* module) {
           [](py::args args, py::kwargs kwargs) {
             // see: [pybind11 varargs]
             auto strongPtr = py::cast<StrongAutogradFunctionPtr>(args[0]);
-            Function& callee = *strongPtr.fw_function_;
+            Function& callee = *strongPtr.direct_call_function_;
             bool tracing = tracer::isTracing();
             if (tracing) {
               tracer::getTracingState()->graph->push_scope(callee.name());
@@ -750,8 +750,28 @@ void initJitScriptBindings(PyObject* module) {
         fw_defined->setSchema(pair_schema.second);
         auto bw_defined = cu->create_function(
             def.name().name() + ".backward", pair_schema.first.backward);
+        auto direct_call = std::make_shared<Graph>();
+        auto& fw_graph = pair_schema.first.forward;
+        std::vector<NamedValue> nv;
+        for (const auto& i : fw_graph->inputs()) {
+          Value* v = direct_call->addInput(i->debugName())->setType(i->type());
+          nv.emplace_back(v);
+        }
+        MatchedSchema match = matchSchema(
+            fw_defined->getSchema(),
+            def.decl().range(),
+            *fw_defined->graph(),
+            nv,
+            {});
+        Value* output = direct_call->insertAutogradFunctionCall(
+            fw_defined, bw_defined, match);
+        output->node()->setSourceRange(def.range());
+        direct_call->registerOutput(output);
 
-        StrongAutogradFunctionPtr ret(std::move(cu), fw_defined, bw_defined);
+        auto direct_call_defined = cu->create_function(
+            def.name().name() + ".direct_call", direct_call);
+        StrongAutogradFunctionPtr ret(
+            std::move(cu), fw_defined, bw_defined, direct_call_defined);
         // didFinishEmitFunction(ret); should I add a new hook type and change
         // pair -> tuple?!
         return ret;
