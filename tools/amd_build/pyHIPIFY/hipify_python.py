@@ -73,6 +73,35 @@ class bcolors:
     UNDERLINE = '\033[4m'
 
 
+def is_matching_file(filepath, includes=('*',), ignores=(), extensions=(), out_of_place_only=False):
+    def _fnmatch(filepath, patterns):
+        return any(fnmatch.fnmatch(filepath, pattern) for pattern in patterns)
+
+    def match_extensions(filename):
+        """Helper method to see if filename ends with certain extension"""
+        return any(filename.endswith(e) for e in extensions)
+
+    exact_matches = set(includes)
+
+    # This is a very rough heuristic; really, we want to avoid scanning
+    # any file which is not checked into source control, but this script
+    # needs to work even if you're in a Git or Hg checkout, so easier to
+    # just blacklist the biggest time sinks that won't matter in the
+    # end.
+    # We respect extensions, UNLESS you wrote the entire
+    # filename verbatim, in which case we always accept it
+    if (
+      _fnmatch(filepath, includes)
+      and (not _fnmatch(filepath, ignores))
+      and (match_extensions(filepath) or filepath in exact_matches)
+            ):
+                if not is_pytorch_file(filepath) and not is_caffe2_gpu_file(filepath):
+                    return False
+                if out_of_place_only and not is_out_of_place(filepath):
+                    return False
+                return True
+    return False
+
 def matched_files_iter(root_path, includes=('*',), ignores=(), extensions=(), out_of_place_only=False):
     def _fnmatch(filepath, patterns):
         return any(fnmatch.fnmatch(filepath, pattern) for pattern in patterns)
@@ -119,7 +148,8 @@ def preprocess(
         all_files,
         show_detailed=False,
         show_progress=True,
-        hip_clang_launch=False):
+        hip_clang_launch=False,
+        single_file=False):
     """
     Call preprocessor on selected files.
 
@@ -131,7 +161,7 @@ def preprocess(
     stats = {"unsupported_calls": [], "kernel_launches": []}
 
     for filepath in all_files:
-        result = preprocessor(output_directory, filepath, stats, hip_clang_launch)
+        result = preprocessor(output_directory, filepath, stats, hip_clang_launch, single_file=single_file)
         # Show what happened
         if show_progress:
             print(
@@ -601,13 +631,19 @@ RE_ANGLE_HEADER = re.compile(r'#include <([^>]+)>')
 RE_THC_GENERIC_FILE = re.compile(r'#define THC_GENERIC_FILE "([^"]+)"')
 RE_CU_SUFFIX = re.compile(r'\.cu\b')  # be careful not to pick up .cuh
 
-def preprocessor(output_directory, filepath, stats, hip_clang_launch):
+def preprocessor(output_directory, filepath, stats, hip_clang_launch, single_file=False):
     """ Executes the CUDA -> HIP conversion on the specified file. """
-    fin_path = os.path.join(output_directory, filepath)
+    if not single_file:
+        fin_path = os.path.join(output_directory, filepath)
+    else:
+        fin_path = filepath
     with open(fin_path, 'r') as fin:
         output_source = fin.read()
 
-    fout_path = os.path.join(output_directory, get_hip_file_path(filepath))
+    if not single_file:
+        fout_path = os.path.join(output_directory, get_hip_file_path(filepath))
+    else:
+        fout_path = output_directory
     if not os.path.exists(os.path.dirname(fout_path)):
         os.makedirs(os.path.dirname(fout_path))
 
@@ -770,6 +806,7 @@ def hipify(
     ignores=(),
     show_progress=True,
     hip_clang_launch=False,
+    single_file_name=None,
 ):
     if project_directory == "":
         project_directory = os.getcwd()
@@ -788,9 +825,17 @@ def hipify(
     if not os.path.exists(output_directory):
         shutil.copytree(project_directory, output_directory)
 
-    all_files = list(matched_files_iter(output_directory, includes=includes,
+    if single_file_name is None:
+        all_files = list(matched_files_iter(output_directory, includes=includes,
                                         ignores=ignores, extensions=extensions,
                                         out_of_place_only=out_of_place_only))
+    else:
+        if is_matching_file(single_file_name, includes=includes,
+                                        ignores=ignores, extensions=extensions,
+                                        out_of_place_only=out_of_place_only):
+            all_files = [single_file_name]
+        else:
+            sys.exit(1)  # signal that this file isn't for us
 
     # Start Preprocessor
     preprocess(
@@ -798,4 +843,5 @@ def hipify(
         all_files,
         show_detailed=show_detailed,
         show_progress=show_progress,
-        hip_clang_launch=hip_clang_launch)
+        hip_clang_launch=hip_clang_launch,
+        single_file=(single_file_name is not None))

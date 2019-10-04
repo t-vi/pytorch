@@ -37,6 +37,13 @@ parser.add_argument(
     help="The list of extra directories in caffe2 to hipify",
     required=False)
 
+parser.add_argument(
+    '--single-file',
+    type=str,
+    default=None,
+    help="a single file to be processed",
+    required=False)
+
 args = parser.parse_args()
 
 amd_build_dir = os.path.dirname(os.path.realpath(__file__))
@@ -103,7 +110,7 @@ ignores = [
     "torch/include/*",
 ]
 
-if not args.out_of_place_only:
+if not args.out_of_place_only and not args.single_file:
     # Apply patch files in place (PyTorch only)
     patch_folder = os.path.join(amd_build_dir, "patches")
     for filename in os.listdir(os.path.join(amd_build_dir, "patches")):
@@ -150,4 +157,5 @@ hipify_python.hipify(
     includes=includes,
     ignores=ignores,
     out_of_place_only=args.out_of_place_only,
-    hip_clang_launch=is_hip_clang())
+    hip_clang_launch=is_hip_clang(),
+    single_file_name=args.single_file)
