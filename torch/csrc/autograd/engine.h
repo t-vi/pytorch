@@ -283,9 +283,7 @@ struct TORCH_API Engine {
       const std::shared_ptr<GraphTask>& graph_task,
       std::shared_ptr<Node> graph_root);
 
-  virtual std::unique_ptr<AnomalyMetadata> make_anomaly_metadata() {
-    return nullptr;
-  }
+  virtual std::unique_ptr<AnomalyMetadata> make_anomaly_metadata();
 
   // We pass cpu_ready_queue to evaluate_function, so that it knows
   // the correct ready queue to push to after a NodeTask is ready

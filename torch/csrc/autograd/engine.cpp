@@ -691,6 +691,10 @@ static variable_list call_function(
   return outputs;
 }
 
+std::unique_ptr<AnomalyMetadata> Engine::make_anomaly_metadata() {
+  return std::unique_ptr<AnomalyMetadata>(new AnomalyMetadata());
+}
+
 void Engine::evaluate_function(
     std::shared_ptr<GraphTask>& graph_task,
     Node* func,
