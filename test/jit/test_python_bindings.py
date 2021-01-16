@@ -35,3 +35,13 @@ class TestPythonBindings(JitTestCase):
         self.assertEqual(inp * 2, cu.test_fn(inp))
         with self.assertRaises(AttributeError):
             cu.doesnt_exist(inp)
+
+    def test_aliasdb(self):
+        @torch.jit.script
+        def test_aliasdb_fn(x: torch.Tensor):
+            return 2 * x
+
+        gr = test_aliasdb_fn.graph.copy()
+        alias_db = gr.alias_db()
+        self.assertTrue("WILDCARD" in str(alias_db))
+        self.assertTrue("digraph fusion_ir" in alias_db.to_graphviz_str())
