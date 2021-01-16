@@ -51,3 +51,12 @@ class TestPythonBindings(JitTestCase):
             str(n)
         with self.assertRaisesRegex(RuntimeError, "invalidated"):
             str(v)
+
+    def test_aliasdb(self):
+        @torch.jit.script
+        def test_aliasdb_fn(x: torch.Tensor):
+            return 2 * x
+
+        gr = test_aliasdb_fn.graph.copy()
+        alias_db = gr.alias_db()
+        self.assertTrue("WILDCARD" in str(alias_db))

@@ -209,11 +209,21 @@ Node* Graph::createPythonOp(
 
 void initPythonIRBindings(PyObject* module_) {
   auto m = py::handle(module_).cast<py::module>();
+
+  py::class_<AliasDb, std::shared_ptr<AliasDb>>(m, "AliasDb")
+      .def("dump", [](std::shared_ptr<AliasDb> db) { db->dump(); })
+      .def("__str__", &AliasDb::toString);
+
 #define GS(name) def(#name, &Graph ::name)
   py::class_<Graph, std::shared_ptr<Graph>>(m, "Graph")
       .def(py::init<>())
       .def("__repr__", [](Graph& g) { return g.toString(); })
       .def("str", &Graph::toString, py::arg("print_source_ranges") = true)
+      .def(
+          "alias_db",
+          [](std::shared_ptr<Graph> g) {
+            return std::make_shared<AliasDb>(std::move(g));
+          })
       .def(
           "dump_alias_db",
           [](std::shared_ptr<Graph> g) {
