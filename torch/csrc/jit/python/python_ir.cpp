@@ -6,6 +6,7 @@
 #include <torch/csrc/jit/passes/canonicalize.h>
 #include <torch/csrc/jit/passes/onnx/helper.h>
 #include <torch/csrc/jit/passes/shape_analysis.h>
+#include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/python/pybind.h>
 #include <torch/csrc/jit/python/python_tracer.h>
 #include <torch/csrc/jit/runtime/argument_spec.h>
@@ -563,6 +564,7 @@ void initPythonIRBindings(PyObject* module_) {
       .NS(removeAllInputs)
       .NS(destroy)
       .NS(hasUses)
+      .NS(hasSideEffects)
       .NS(eraseOutput)
       .NS(addOutput)
       .NS(scopeName)
@@ -883,6 +885,21 @@ void initPythonIRBindings(PyObject* module_) {
       .def_readonly("offset", &Use::offset)
       .def("isAfter", [](Use& self, Use& other_use) {
         return isBeforeOrAfter(self, other_use, false);
+      });
+
+  py::module_ msubgraph =
+      m.def_submodule("_jit_subgraph", "JIT subgraph utils");
+  msubgraph.def(
+      "mergeNodeIntoSubgraphAndUpdateAliasing",
+      SubgraphUtils::mergeNodeIntoSubgraphAndUpdateAliasing);
+  msubgraph.def(
+      "createSingletonSubgraphAndUpdateAliasing",
+      [](unwrapping_shared_ptr<Node> to_merge,
+         std::string& subgraph_kind,
+         AliasDb& db) {
+        auto res = SubgraphUtils::createSingletonSubgraphAndUpdateAliasing(
+            to_merge.get(), Symbol::fromQualString(subgraph_kind), db);
+        return res;
       });
 }
 } // namespace jit
