@@ -605,7 +605,32 @@ void initPythonIRBindings(PyObject* module_) {
       .CREATE_ACCESSOR(Ints, is)
       .CREATE_ACCESSOR(Graph, g)
       .CREATE_ACCESSOR(Graphs, gs)
+      .CREATE_ACCESSOR(Type, ty)
+      .CREATE_ACCESSOR(Types, tys)
 #undef CREATE_ACCESSOR
+      .def(
+          "_is", // because is is a Python reserved word
+          [](Node& n, const char* name) { return n.is(Symbol::attr(name)); })
+      // IValue (ival_) -- manually written to optionally specify the type.
+      // This is because the type inferrence cannot capture optionals that
+      // are non-None and such.
+      .def(
+          "ival_",
+          [](Node& n, const char* name, py::object value, TypePtr type) {
+            IValue v;
+            if (type) {
+              v = toIValue(value, type);
+            } else {
+              v = toTypeInferredIValue(value);
+            }
+            return n.ival_(Symbol::attr(name), std::move(v));
+          },
+          py::arg("name"),
+          py::arg("value"),
+          py::arg("type") = nullptr)
+      .def(
+          "ival",
+          [](Node& n, const char* name) { return n.ival(Symbol::attr(name)); })
       // Tensor (t_) -- manually written to unwrap the variable into a tensor.
       .def(
           "t_",
