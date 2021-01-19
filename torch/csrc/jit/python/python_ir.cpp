@@ -813,6 +813,21 @@ void initPythonIRBindings(PyObject* module_) {
       .def_static("get", &BoolType::get);
   py::class_<StringType, Type, std::shared_ptr<StringType>>(m, "StringType")
       .def_static("get", &StringType::get);
+  py::class_<FunctionType, Type, std::shared_ptr<FunctionType>>(
+      m, "FunctionType")
+      .def(
+          "name",
+          [](const std::shared_ptr<FunctionType>& self) {
+            return self->function()->name();
+          })
+      .def(
+          "get_debug_state",
+          [](const std::shared_ptr<FunctionType>& self) {
+            return self->function()->get_executor().getDebugState();
+          })
+      .def("optimized_graph", [](const std::shared_ptr<FunctionType>& self) {
+        return self->function()->optimized_graph();
+      });
   py::class_<DeviceObjType, Type, std::shared_ptr<DeviceObjType>>(
       m, "DeviceObjType")
       .def_static("get", &DeviceObjType::get);
