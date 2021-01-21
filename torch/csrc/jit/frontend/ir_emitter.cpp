@@ -1007,7 +1007,8 @@ struct to_ir {
             /*allow_conversions=*/true);
       }
 
-      if (!result->type()->isSubtypeOf(result_type)) {
+      if (!((result->type()->isSubtypeOf(result_type)) ||
+            (result->type() == PyObjectType::get()))) {
         throw ErrorReport(stmt.range())
             << "Return value was annotated as having type "
             << result_type->repr_str() << " but is actually of type "
@@ -1039,6 +1040,7 @@ struct to_ir {
     if (result_type == AnyType::get() && result->type() != AnyType::get()) {
       result = graph->insertUncheckedCast(result, result_type);
     }
+    // TODO: CAST PyObjectType with checking...
 
     graph->insertNode(graph->create(prim::ReturnStmt, {result}, 0));
     exit_blocks.insert(environment_stack->block());

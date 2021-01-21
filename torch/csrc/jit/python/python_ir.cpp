@@ -129,7 +129,9 @@ Node* findNode(Block* block, Symbol kind, bool recurse = true) {
 
 std::string ConcretePythonOp::name() const {
   pybind11::gil_scoped_acquire gil;
-  if (auto autograd = autogradFunction()) {
+  if (!pyobj) {
+    return "<PyObjectCall>";
+  } else if (auto autograd = autogradFunction()) {
     return getPythonName(autograd->get());
   } else {
     return getPythonName(pyobj.get());
@@ -140,8 +142,12 @@ void ConcretePythonOp::cloneFrom(Node* other_) {
   Node::cloneFrom(other_);
   auto other = other_->cast<ConcretePythonOp>();
   this->cconv = other->cconv;
-  Py_INCREF(other->pyobj.get());
-  this->pyobj = THPObjectPtr(other->pyobj.get());
+  if (other->pyobj) {
+    Py_INCREF(other->pyobj.get());
+    this->pyobj = THPObjectPtr(other->pyobj.get());
+  } else {
+    this->pyobj = {};
+  }
   for (auto& sa : other->scalar_args) {
     Py_INCREF(sa.get());
     this->scalar_args.emplace_back(sa.get());

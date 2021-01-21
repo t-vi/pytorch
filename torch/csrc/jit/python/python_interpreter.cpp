@@ -31,9 +31,12 @@ namespace {
 Operation createPythonOperation(const Node* op_) {
   pybind11::gil_scoped_acquire gil;
   const ConcretePythonOp* op = static_cast<const ConcretePythonOp*>(op_);
-  const py::function func = py::reinterpret_borrow<const py::function>(
-      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
-      py::handle(const_cast<ConcretePythonOp*>(op)->pyobj.get()));
+  const py::function func =
+      (op->pyobj
+           ? py::reinterpret_borrow<const py::function>(
+                 // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
+                 py::handle(const_cast<ConcretePythonOp*>(op)->pyobj.get()))
+           : py::function{});
 
   size_t num_inputs = 0;
   for (auto arg_type : op->cconv) {
@@ -45,11 +48,17 @@ Operation createPythonOperation(const Node* op_) {
 
   return [=](Stack* stack) {
     pybind11::gil_scoped_acquire gil;
-    py::tuple py_inputs(op->cconv.size());
+    py::tuple py_inputs(op->cconv.size() - (func ? 0 : 1));
     size_t i = 0;
     size_t next_scalar = 0;
     size_t next_tensor = 0;
+    py::function func_from_val;
     for (auto arg_type : op->cconv) {
+      if (!func && !func_from_val) {
+        func_from_val =
+            toPyObject(std::move(peek(stack, next_tensor, num_inputs)));
+        continue;
+      }
       if (arg_type == 'c') {
         py_inputs[i] = py::reinterpret_borrow<const py::object>(
             // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
@@ -65,7 +74,7 @@ Operation createPythonOperation(const Node* op_) {
     }
     drop(stack, num_inputs);
     try {
-      py::object py_output(func(*py_inputs));
+      py::object py_output((func ? func : func_from_val)(*py_inputs));
       stack->push_back(returnToIValue(op->output()->type(), py_output));
     } catch (py::error_already_set& e) {
       throw std::runtime_error(e.what());
