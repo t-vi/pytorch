@@ -516,6 +516,7 @@ void AliasDb::analyzeImpl(Node* node) {
         }
       }
       return analyzeExtractor(node);
+    case prim::CastFromPython:
     case prim::unchecked_cast:
       return makePointerTo(node->output(), node->input());
     case prim::ConstantChunk:

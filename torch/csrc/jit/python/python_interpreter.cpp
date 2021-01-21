@@ -12,6 +12,7 @@
 #include <torch/csrc/jit/runtime/graph_executor.h>
 #include <torch/csrc/jit/runtime/operator.h>
 
+#include <sstream>
 #include <typeinfo>
 
 #include <pybind11/pybind11.h>
@@ -86,10 +87,34 @@ c10::AliasAnalysisKind aliasAnalysisIsSpecialCase() {
   return AliasAnalysisKind::INTERNAL_SPECIAL_CASE;
 }
 
-RegisterOperators reg({Operator(
-    prim::PythonOp,
-    createPythonOperation,
-    aliasAnalysisIsSpecialCase())});
+Operation createCastFromPythonOperation(const Node* node) {
+  TypePtr typ = node->ty(attr::types);
+  return [=](Stack* stack) {
+    pybind11::gil_scoped_acquire gil;
+
+    py::object pyobj = toPyObject(std::move(pop(stack)));
+    try {
+      push(stack, toIValue(pyobj, typ));
+    } catch (py::cast_error& e) {
+      std::stringstream msg;
+      py::object pytype =
+          py::module::import("builtins").attr("type")(pyobj).attr("__name__");
+      msg << "ValueError: cannot cast Python object of type " << pytype
+          << " to TorchScript type " << *typ;
+      throw std::runtime_error(msg.str());
+    }
+  };
+}
+
+RegisterOperators reg(
+    {Operator(
+         prim::PythonOp,
+         createPythonOperation,
+         aliasAnalysisIsSpecialCase()),
+     Operator(
+         prim::CastFromPython,
+         createCastFromPythonOperation,
+         aliasAnalysisIsSpecialCase())});
 
 } // namespace
 } // namespace jit

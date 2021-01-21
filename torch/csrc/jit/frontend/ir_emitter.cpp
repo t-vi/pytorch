@@ -280,9 +280,14 @@ struct Environment {
       const std::string& name,
       const SourceRange& loc,
       Value* v,
-      TypePtr type) {
+      TypePtr type,
+      bool check_type) {
     auto g = b->owningGraph();
-    g->insertNode(g->createStore(name, v))->setSourceRange(loc);
+    auto n = g->insertNode(g->createStore(name, v))->setSourceRange(loc);
+    if (check_type) {
+      v->setType(PyObjectType::get());
+      n->ty_(attr::types, type);
+    }
     type_table[name] = std::move(type);
   }
 
@@ -399,14 +404,20 @@ struct Environment {
       if (!annotated_type) {
         annotated_type = as_simple_value->type();
       }
-      if (!as_simple_value->type()->isSubtypeOf(annotated_type)) {
+      if (as_simple_value->type() == PyObjectType::get()) {
+      } else if (!as_simple_value->type()->isSubtypeOf(annotated_type)) {
         throw ErrorReport(loc)
             << "Variable '" << name << "' is annotated with type "
             << annotated_type->repr_str()
             << " but is being assigned to a value of type "
             << as_simple_value->type()->repr_str();
       }
-      insertStore(name, loc, as_simple_value, annotated_type);
+      insertStore(
+          name,
+          loc,
+          as_simple_value,
+          annotated_type,
+          as_simple_value->type() == PyObjectType::get());
     } else {
       value_table[name] = std::move(value);
     }

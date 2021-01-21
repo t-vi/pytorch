@@ -194,7 +194,18 @@ struct EraseLoadStores {
 
       switch (n->kind()) {
         case prim::Store: {
-          environment_stack->setVar(n->s(attr::name), n->input());
+          auto v = n->input();
+          if (n->hasAttribute(attr::types)) {
+            auto ty = n->ty(attr::types);
+            auto ta = n->owningGraph()
+                          ->create(prim::CastFromPython)
+                          ->setSourceRange(n->sourceRange())
+                          ->ty_(attr::types, ty)
+                          ->insertAfter(n);
+            ta->addInput(v);
+            v = ta->output()->setType(ty);
+          }
+          environment_stack->setVar(n->s(attr::name), v);
           n->destroy();
         } break;
         case prim::Load: {

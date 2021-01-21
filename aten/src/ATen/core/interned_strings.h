@@ -66,6 +66,7 @@ namespace c10 {
   _(prim, AutogradAllNonZero)        \
   _(prim, AutogradAllZero)           \
   _(prim, Starred)                   \
+  _(prim, CastFromPython)            \
   _(prim, TupleConstruct)            \
   _(prim, TupleUnpack)               \
   _(prim, TupleIndex)                \
