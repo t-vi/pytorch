@@ -39,7 +39,7 @@ Operation createPythonOperation(const Node* op_) {
                  py::handle(const_cast<ConcretePythonOp*>(op)->pyobj.get()))
            : py::function{});
 
-  size_t num_inputs = 0;
+  size_t num_inputs = op->pyobj ? 0 : 1;
   for (auto arg_type : op->cconv) {
     if (arg_type == 'd')
       num_inputs++;
@@ -49,17 +49,17 @@ Operation createPythonOperation(const Node* op_) {
 
   return [=](Stack* stack) {
     pybind11::gil_scoped_acquire gil;
-    py::tuple py_inputs(op->cconv.size() - (func ? 0 : 1));
+    py::tuple py_inputs(op->cconv.size());
     size_t i = 0;
     size_t next_scalar = 0;
     size_t next_tensor = 0;
     py::function func_from_val;
+    if (!func) {
+      func_from_val =
+          toPyObject(std::move(peek(stack, next_tensor, num_inputs)));
+      next_tensor++;
+    }
     for (auto arg_type : op->cconv) {
-      if (!func && !func_from_val) {
-        func_from_val =
-            toPyObject(std::move(peek(stack, next_tensor, num_inputs)));
-        continue;
-      }
       if (arg_type == 'c') {
         py_inputs[i] = py::reinterpret_borrow<const py::object>(
             // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
@@ -87,6 +87,15 @@ c10::AliasAnalysisKind aliasAnalysisIsSpecialCase() {
   return AliasAnalysisKind::INTERNAL_SPECIAL_CASE;
 }
 
+Operation createPyConstantOperation(const Node* node) {
+  pybind11::gil_scoped_acquire gil;
+  auto val = node->ival(attr::value);
+  return [=](Stack* stack) {
+    pybind11::gil_scoped_acquire gil;
+    stack->push_back(val);
+  };
+}
+
 Operation createCastFromPythonOperation(const Node* node) {
   TypePtr typ = node->ty(attr::types);
   return [=](Stack* stack) {
@@ -94,7 +103,7 @@ Operation createCastFromPythonOperation(const Node* node) {
 
     py::object pyobj = toPyObject(std::move(pop(stack)));
     try {
-      push(stack, toIValue(pyobj, typ));
+      stack->push_back(toIValue(pyobj, typ));
     } catch (py::cast_error& e) {
       std::stringstream msg;
       py::object pytype =
@@ -110,6 +119,10 @@ RegisterOperators reg(
     {Operator(
          prim::PythonOp,
          createPythonOperation,
+         aliasAnalysisIsSpecialCase()),
+     Operator(
+         prim::PyConstant,
+         createPyConstantOperation,
          aliasAnalysisIsSpecialCase()),
      Operator(
          prim::CastFromPython,

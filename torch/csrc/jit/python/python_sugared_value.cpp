@@ -909,13 +909,10 @@ std::shared_ptr<SugaredValue> PythonObjectValue::attr(
     const SourceRange& loc,
     Function& m,
     const std::string& field) {
-  // this would look nicer in the graph, but it we would need to implement it in
-  // the interpreter. maybe we move to replacing prim::GetAttr on PythonObjects
-  // later as a pass auto n = m.graph()->create(prim::GetAttr, {getValue()},
-  // /*num_outputs=*/1); n->setSourceRange(loc); n->s_(attr::name, field);
-  // n->output()->setType(PyObjectType::get());
-  // m.graph()->insertNode(n);
-
+  // using prim::GetAttr would look nicer in the graph, but we would need
+  // to implement it in the interpreter or move to replacing prim::GetAttr
+  // on PythonObjects
+  // later as a pass
   std::string cconv(2, 'd');
   Value* v_field = insertConstant(*m.graph(), field, loc);
   py::object getattr = py::module::import("builtins").attr("getattr");
@@ -935,7 +932,7 @@ std::shared_ptr<SugaredValue> PythonObjectValue::call(
     at::ArrayRef<NamedValue> kwargs,
     size_t /*n_binders*/) {
   auto inputs = toValues(*m.graph(), args);
-  std::string cconv(inputs.size() + 1, 'd');
+  std::string cconv(inputs.size(), 'd');
   if (!kwargs.empty()) {
     throw ErrorReport(loc) << "KWARGS currently not supported";
   }
@@ -951,28 +948,15 @@ std::shared_ptr<SugaredValue> PythonObjectValue::call(
   return std::make_shared<PythonObjectValue>(output);
 }
 
-std::shared_ptr<SugaredValue> PythonFallbackValue::call(
-    const SourceRange& loc,
-    Function& caller,
-    at::ArrayRef<NamedValue> args,
-    at::ArrayRef<NamedValue> kwargs,
-    size_t /*n_binders*/) {
-  // Release the function object so we can wrap it in a PythonOp
-  py::object func = self;
-  auto inputs = toValues(*caller.graph(), args);
-  std::string cconv(inputs.size(), 'd');
-  if (!kwargs.empty()) {
-    throw ErrorReport(loc) << "KWARGS currently not supported";
-  }
-  Node* new_node = caller.graph()->insertNode(caller.graph()->createPythonOp(
-      THPObjectPtr(func.release().ptr()), cconv, {}));
-
-  new_node->setSourceRange(loc);
-  for (auto& i : inputs)
-    new_node->addInput(i);
-
-  Value* output = new_node->addOutput()->setType(PyObjectType::get());
-  return std::make_shared<PythonObjectValue>(output);
+std::shared_ptr<PythonObjectValue> bindPythonObjectValue(
+    py::object obj,
+    Function& m,
+    SourceRange loc) {
+  Node* n = m.graph()->insertNode(m.graph()->create(prim::PyConstant));
+  n->ival_(attr::value, toIValue(obj, PyObjectType::get()));
+  n->setSourceRange(loc);
+  n->output()->setType(PyObjectType::get());
+  return std::make_shared<PythonObjectValue>(n->output());
 }
 
 std::shared_ptr<SugaredValue> toSugaredValue(
@@ -1088,7 +1072,7 @@ std::shared_ptr<SugaredValue> toSugaredValue(
 
   if (py::isinstance<py::function>(obj)) {
     if (typeString(obj) == "builtin_function_or_method") {
-      return std::make_shared<PythonFallbackValue>(obj);
+      return bindPythonObjectValue(obj, m, loc);
     }
   }
 

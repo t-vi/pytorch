@@ -365,20 +365,5 @@ struct VISIBILITY_HIDDEN PythonObjectValue : public SimpleValue {
       size_t n_binders) override;
 };
 
-struct VISIBILITY_HIDDEN PythonFallbackValue : public PythonValue {
-  explicit PythonFallbackValue(const py::object& obj) : PythonValue(obj) {}
-
-  std::string kind() const override {
-    return "bound Python value";
-  }
-
-  std::shared_ptr<SugaredValue> call(
-      const SourceRange& loc,
-      Function& caller,
-      at::ArrayRef<NamedValue> args,
-      at::ArrayRef<NamedValue> kwargs,
-      size_t n_binders) override;
-};
-
 } // namespace jit
 } // namespace torch

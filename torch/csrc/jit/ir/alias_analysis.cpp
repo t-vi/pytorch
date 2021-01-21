@@ -498,6 +498,7 @@ void AliasDb::analyzeImpl(Node* node) {
     case prim::Closure:
     case prim::CreateObject:
     case prim::tolist:
+    case prim::PyConstant:
       return analyzeCreator(node);
     case prim::TupleConstruct:
     case prim::DictConstruct:
